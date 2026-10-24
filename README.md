@@ -28,7 +28,7 @@ The demo uses `data/demo.json`; it must not be used for production. The app's lo
 
 ## Vercel deployment
 
-Import the `hcm-lite-backend` GitHub repository as a new Vercel project named `hcm-lite-api` and keep the project root at the repository root. Vercel detects the Express app export in `app.js` and runs it as a Node.js Function. The included `vercel.json` sets the function timeout.
+Import the `hcm-lite-backend` GitHub repository as a new Vercel project named `hcm-lite-api` and keep the project root at the repository root. The root `app.js` and `src/app.js` both export the configured Express application for Vercel's Node.js Function runtime; neither starts a persistent listener. The local-only `server.js` starts the HTTP listener. The included `vercel.json` sets the function timeout for either app entry.
 
 Set these **Production** environment variables in Vercel (and Preview only when you have a corresponding trusted frontend origin):
 
@@ -61,7 +61,7 @@ Tests use the isolated demo repository and do not require Atlas credentials.
 
 ## API overview
 
-All routes are prefixed with `/api`. Mutating and protected routes use an HttpOnly session cookie; public account setup is available only before a company exists.
+API routes are prefixed with `/api`. For compatibility, the authentication routes are also available directly under `/auth` (including the reported `GET /auth/status`); both prefixes use the same CORS, request-origin, and rate-limit protections. Mutating and protected routes use an HttpOnly session cookie; public account setup is available only before a company exists.
 
 | Route | Access | Purpose |
 | --- | --- | --- |

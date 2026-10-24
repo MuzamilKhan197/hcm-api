@@ -3,6 +3,9 @@
   "functions": {
     "app.js": {
       "maxDuration": 30
+    },
+    "src/app.js": {
+      "maxDuration": 30
     }
   }
 }

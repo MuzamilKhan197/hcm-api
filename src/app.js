@@ -1,98 +1,58 @@
-import express from "express";
-import cors from "cors";
-import helmet from "helmet";
-import cookieParser from "cookie-parser";
-import rateLimit from "express-rate-limit";
-import path from "node:path";
-import { fileURLToPath } from "node:url";
-import { existsSync } from "node:fs";
-import { authRouter } from "./controllers/auth.js";
-import { workspaceRouter } from "./routes/workspace.js";
-export function createApp(db, config) {
-  const app = express();
-  const origins = [
-    config.clientUrl,
-    ...(!config.production
-      ? ["http://localhost:5173", "http://127.0.0.1:5173"]
-      : []),
-  ].filter(Boolean);
-  app.disable("x-powered-by");
-  app.use(helmet());
-  app.use(cors({
-    origin: (origin, callback) => callback(null, origin && origins.includes(origin) ? origin : false),
-    credentials: true,
-  }));
-  app.use(express.json({ limit: "32kb" }));
-  app.use(cookieParser());
-  app.use("/api", (req, res, next) => {
-    const unsafe = !["GET", "HEAD", "OPTIONS"].includes(req.method);
-    const nonRead = !["GET", "HEAD"].includes(req.method);
-    if (config.production && unsafe && !req.headers.origin)
-      return res.status(403).json({ message: "A trusted request origin is required." });
-    if (
-      req.headers.origin &&
-      !origins.includes(req.headers.origin) &&
-      nonRead
-    )
-      return res.status(403).json({ message: "This origin is not allowed." });
-    if (
-      req.get("sec-fetch-site") === "cross-site" &&
-      (!req.headers.origin || !origins.includes(req.headers.origin))
-    )
-      return res
-        .status(403)
-        .json({ message: "Cross-site requests are not allowed." });
-    next();
-  });
-  app.use(
-    "/api",
-    rateLimit({
-      windowMs: 60 * 1000,
-      limit: 180,
-      standardHeaders: "draft-8",
-      legacyHeaders: false,
-      message: { message: "Please slow down and try again in a minute." },
-    }),
-  );
-  app.get("/api/health", async (req, res) => {
-    await db.health();
-    res.json({ ok: true, storage: db.mode });
-  });
-  app.use("/api/auth", authRouter(db, config));
-  app.use("/api", workspaceRouter(db, config));
-  app.use("/api", (req, res) =>
-    res.status(404).json({ message: "This API endpoint does not exist." }),
-  );
-  const frontend = fileURLToPath(
-    new URL("../../frontend/dist", import.meta.url),
-  );
-  if (config.serveFrontend !== false && existsSync(frontend)) {
-    app.use(express.static(frontend));
-    app.get("/{*path}", (req, res) =>
-      res.sendFile(path.join(frontend, "index.html")),
-    );
-  }
-  app.use((error, req, res, next) => {
-    if (res.headersSent) return next(error);
-    if (error.code === 11000)
-      return res
-        .status(409)
-        .json({ message: "A record with these details already exists." });
-    if (
-      error.name === "ValidationError" ||
-      error.type === "entity.parse.failed"
-    )
-      return res
-        .status(400)
-        .json({ message: "Please check the submitted fields." });
-    if (!error.status || error.status >= 500)
-      console.error("Request failed:", error.name, error.message);
-    res.status(error.status || 500).json({
-      message:
-        error.status && error.status < 500
-          ? error.message
-          : "Something went wrong. Please try again.",
-    });
-  });
-  return app;
+import { createMongoStore } from "./config/database.js";
+import { createApp } from "./create-app.js";
+
+const jwtSecret = process.env.JWT_SECRET;
+const mongoUri = process.env.MONGODB_URI;
+const production = process.env.NODE_ENV === "production";
+const clientUrl = process.env.CLIENT_URL;
+
+if (!mongoUri) throw new Error("MONGODB_URI must be configured.");
+if (!jwtSecret || jwtSecret.length < 32 || jwtSecret.includes("replace-with")) {
+  throw new Error("JWT_SECRET must be a random value with at least 32 characters.");
 }
+if (production && !clientUrl) throw new Error("CLIENT_URL must be configured in production.");
+
+let clientOrigin = "";
+if (clientUrl) {
+  const parsedClientUrl = new URL(clientUrl);
+  if (parsedClientUrl.pathname !== "/" || parsedClientUrl.search || parsedClientUrl.hash || parsedClientUrl.username || parsedClientUrl.password) {
+    throw new Error("CLIENT_URL must contain only the frontend origin.");
+  }
+  if (production && parsedClientUrl.protocol !== "https:") {
+    throw new Error("CLIENT_URL must use HTTPS in production.");
+  }
+  clientOrigin = parsedClientUrl.origin;
+}
+
+let storePromise;
+function getStore() {
+  if (!storePromise) {
+    storePromise = createMongoStore(mongoUri).catch(error => {
+      storePromise = undefined;
+      throw error;
+    });
+  }
+  return storePromise;
+}
+
+const db = {
+  mode: "mongodb",
+  health: () => getStore().then(store => store.health()),
+  all: (...args) => getStore().then(store => store.all(...args)),
+  one: (...args) => getStore().then(store => store.one(...args)),
+  insert: (...args) => getStore().then(store => store.insert(...args)),
+  update: (...args) => getStore().then(store => store.update(...args)),
+  transaction: fn => getStore().then(store => store.transaction(fn)),
+};
+
+const config = {
+  jwtSecret,
+  production,
+  clientUrl: clientOrigin,
+  openAiApiKey: process.env.OPENAI_API_KEY,
+  openAiModel: process.env.OPENAI_MODEL || "gpt-4o-mini",
+  serveFrontend: false,
+};
+
+export const app = createApp(db, config);
+export default app;

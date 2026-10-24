@@ -4,7 +4,7 @@ import request from 'supertest';
 import bcrypt from 'bcryptjs';
 import { createDemoStore } from '../src/config/database.js';
 import { seedDemo } from '../src/services/seed.js';
-import { createApp } from '../src/app.js';
+import { createApp } from '../src/create-app.js';
 import { cookieOptions } from '../src/middleware/auth.js';
 import { dateInZone, payrollAmount, workdays, validDate } from '../src/utils/domain.js';
 const config = { jwtSecret: 'test-only-secret-at-least-thirty-two-characters', production: false, clientUrl: 'http://localhost:5173' };
@@ -19,8 +19,16 @@ function futureWorkday(offset = 5) { const date = new Date(`${dateInZone()}T12:0
 test('authentication is required and unsafe cross-origin writes are rejected', async () => {
   const { app, agent } = await fixture();
   await request(app).get('/api/workspace').expect(401);
+  await request(app).get('/api/auth/me').expect(401).expect('Content-Type', /json/);
   await agent.post('/api/departments').set('Origin','https://untrusted.example').send({name:'Blocked'}).expect(403);
   await agent.get('/api/health').expect(200);
+});
+test('public auth status works on both supported API paths', async () => {
+  const { app } = await fixture();
+  const apiStatus = await request(app).get('/api/auth/status').expect(200);
+  const legacyStatus = await request(app).get('/auth/status').expect(200);
+  assert.deepEqual(legacyStatus.body, apiStatus.body);
+  assert.equal(apiStatus.body.initialized, true);
 });
 test('production CORS trusts only the configured frontend origin', async () => {
   const db = await createDemoStore();
