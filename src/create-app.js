@@ -11,6 +11,8 @@ import { workspaceRouter } from "./routes/workspace.js";
 
 export function createApp(db, config) {
   const app = express();
+  // Vercel is the trusted reverse proxy in front of the Express function.
+  if (config.production) app.set("trust proxy", 1);
   const origins = [
     config.clientUrl,
     ...(!config.production
@@ -26,6 +28,7 @@ export function createApp(db, config) {
   app.use(express.json({ limit: "32kb" }));
   app.use(cookieParser());
   app.use(["/api", "/auth"], (req, res, next) => {
+    res.set("Cache-Control", "no-store");
     const unsafe = !["GET", "HEAD", "OPTIONS"].includes(req.method);
     const nonRead = !["GET", "HEAD"].includes(req.method);
     if (config.production && unsafe && !req.headers.origin)
@@ -75,6 +78,12 @@ export function createApp(db, config) {
   }
   app.use((error, req, res, next) => {
     if (res.headersSent) return next(error);
+    if (error.code === "DATABASE_UNAVAILABLE") {
+      return res.status(503).json({
+        code: "DATABASE_UNAVAILABLE",
+        message: "The backend could not connect to MongoDB. Check MONGODB_URI and Atlas network access in the backend deployment.",
+      });
+    }
     if (error.code === 11000)
       return res
         .status(409)

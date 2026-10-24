@@ -28,7 +28,9 @@ The demo uses `data/demo.json`; it must not be used for production. The app's lo
 
 ## Vercel deployment
 
-Import the `hcm-lite-backend` GitHub repository as a new Vercel project named `hcm-lite-api` and keep the project root at the repository root. The root `app.js` and `src/app.js` both export the configured Express application for Vercel's Node.js Function runtime; neither starts a persistent listener. The local-only `server.js` starts the HTTP listener. The included `vercel.json` sets the function timeout for either app entry.
+The existing backend is `https://hcm-api.vercel.app`, connected to `MuzamilKhan197/hcm-api`. Use the repository root as Vercel's Root Directory, the Express framework preset, and Node.js 22 or later. Leave Build Command and Output Directory at their Express defaults; do not run `server.js` or select `src` as the project root.
+
+The root `app.js` directly imports Express and default-exports the application. It is the single function configured in `vercel.json`. `src/app.js` is only a compatibility re-export, and `src/create-app.js` is the testable application factory. `server.js` is for local development. The entry point always exports a function, including when environment configuration is missing. In that case API requests receive an actionable JSON 503 instead of `FUNCTION_INVOCATION_FAILED`. MongoDB initialization is cached across warm and concurrent requests; a failed initialization is retried.
 
 Set these **Production** environment variables in Vercel (and Preview only when you have a corresponding trusted frontend origin):
 
@@ -47,7 +49,18 @@ In Atlas, add the Vercel deployment's outbound access as appropriate for your At
 
 After deployment, verify `https://<backend-domain>/api/health` returns `{"ok":true,"storage":"mongodb"}`. This endpoint pings MongoDB. Complete first-run company setup at the frontend URL; there are no default production users.
 
-Production session cookies use `SameSite=None; Secure` for credentialed requests from the separate frontend origin. The backend accepts unsafe requests only from the exact `CLIENT_URL` origin (and requires an Origin header in production). Browser privacy settings may still block third-party cookies on default `*.vercel.app` domains. For reliable sign-in, attach frontend and API custom domains under the same registrable domain (for example, `app.example.com` and `api.example.com`).
+The frontend's Vercel rewrite forwards `/api/:path*` to `https://hcm-api.vercel.app/api/:path*`. Browser requests and host-only cookies therefore stay on the frontend origin, avoiding third-party cookie restrictions. Existing production cookies remain `SameSite=None; Secure; HttpOnly`, and unsafe requests still require the exact trusted `CLIENT_URL` origin. Do not use wildcard origins or disable origin validation.
+
+## Fixing the reported deployment error
+
+Push these backend changes, then redeploy the **latest commit** in Vercel (disable “Use existing Build Cache” for the first corrective deployment). Redeploying an old deployment can reuse the same broken source. Verify:
+
+- `https://hcm-api.vercel.app/` returns the API service description. This is liveness only.
+- `https://hcm-api.vercel.app/api/health` returns HTTP 200 after a real MongoDB ping.
+- `https://hcm-api.vercel.app/api/auth/status` and `/auth/status` both return JSON.
+- Missing configuration produces `SERVER_CONFIGURATION_ERROR`; a database connection failure produces `DATABASE_UNAVAILABLE`. Set the indicated backend variables and redeploy; never place secrets in the frontend.
+
+The frontend must also deploy its latest commit to install the `/api` proxy and discard its previously built root-only API URL. See its README for exact settings.
 
 The built-in request limiters (including the assistant's 20 requests per minute) use in-memory counters, so limits are per serverless instance rather than global across Vercel. Treat them as a basic safeguard, not distributed abuse protection; add a shared rate-limit store or Vercel Firewall rules before handling significant public traffic.
 
