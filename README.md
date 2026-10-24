@@ -36,10 +36,12 @@ Set these **Production** environment variables in Vercel (and Preview only when 
 | --- | --- |
 | `MONGODB_URI` | MongoDB Atlas connection string for the production database |
 | `JWT_SECRET` | Unique cryptographically random secret, at least 32 characters |
-| `CLIENT_URL` | Exact HTTPS origin of the frontend, with no path |
-| `NODE_ENV` | `production` |
+| `CLIENT_URL` | `https://hcm-client-seven.vercel.app` |
+| `NODE_ENV` | Vercel sets `production` automatically for Production deployments; the app also checks `VERCEL_ENV` |
 | `OPENAI_API_KEY` | Optional; keep the key only in the backend project |
 | `OPENAI_MODEL` | Optional; defaults to `gpt-4o-mini` |
+
+Add these values in the backend Vercel project's **Production** environment and redeploy. Do not set `NODE_ENV` globally to `production` for Preview or Development deployments. Set `CLIENT_URL` to the frontend deployment's exact origin (no trailing path); update it if the frontend's production domain changes.
 
 In Atlas, add the Vercel deployment's outbound access as appropriate for your Atlas network policy. Prefer a private connection or a narrowly scoped network policy over allowing all IP addresses. Create a dedicated least-privilege database user. Do not put credentials in this repository or in frontend variables.
 

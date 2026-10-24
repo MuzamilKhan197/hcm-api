@@ -3,7 +3,9 @@ import { createApp } from "./create-app.js";
 
 const jwtSecret = process.env.JWT_SECRET;
 const mongoUri = process.env.MONGODB_URI;
-const production = process.env.NODE_ENV === "production";
+const production =
+  process.env.NODE_ENV === "production" ||
+  process.env.VERCEL_ENV === "production";
 const clientUrl = process.env.CLIENT_URL;
 
 if (!mongoUri) throw new Error("MONGODB_URI must be configured.");
